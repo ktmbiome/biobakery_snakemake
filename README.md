@@ -6,9 +6,15 @@ This pipeline was built to have more fine control over the optimization of the c
 
 ## Installation
 
+The first step is to download this repository to your local environment.
+
+```
+git clone https://github.com/ktmbiome-niaid/biobakery_snakemake.git
+```
+
 An `environment.yml` file was included in the repository for easy installation into the local environment.
 
-With conda active:
+With conda, create the new environment and install packages:
 
 ```
 conda env create -n biobakery_snakemake -f environment.yml
@@ -23,9 +29,11 @@ cd $CONDA_ENV_LOCATION/kneaddata/bin
 ln -s ../share/trimmomatic/trimmomatic.jar .
 ```
 
+There is a possibility that this file already exists in the intended directory, but we have encountered situations where it is not -- running these two lines of code confirms everything is in the right place.
+
 ### Databases
 
-Next, we install the databases that biobakery uses throughout the pipeline. This process can take awhile, so we recommend submitting a job to the scheduler of your HPC. The commands for a SLURM batch script to download the databases used by the current workflow during development are below:
+Next, we install the databases that biobakery uses throughout the pipeline. This process can take awhile, so we recommend submitting a job to the scheduler of your HPC. The commands for a SLURM batch script to download the databases used by the current workflow are below:
 
 ```
 #!/usr/bin/bash
@@ -33,6 +41,8 @@ Next, we install the databases that biobakery uses throughout the pipeline. This
 #SBATCH --time=24:00:00
 
 ## KNEADDATA
+
+conda activate biobakery_snakemake
 
 kneaddata_database --download human_genome bowtie2 kneaddata_db
 ## This command appropriately formats the kneaddata database.
@@ -45,7 +55,7 @@ metaphlan --install --index mpa_vJun23_CHOCOPhlAnSGB_202307 --bowtie2db metaphla
 
 humann_databases --download chocophlan full humann_db
 humann_databases --download uniref uniref90_diamond humann_db
-humann_databases --download utility_mapping fully humann_db
+humann_databases --download utility_mapping full humann_db
 ```
 
 ## Setup Prior to Running the Pipeline
