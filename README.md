@@ -4,6 +4,8 @@
 
 This pipeline was built to have more fine control over the optimization of the components of Biobakery Workflows (how many cores/memory different parts used, when intermediate files were removed for disk space, etc). Snakemake makes these types of personalizations within different environments much easier compared to the ANADAMA manager.
 
+In testing, a 60GB dataset utilizes around 500GB of disk space at most during the life of the job. Running the same dataset in the ANADAMA workflow with the same parameters resulted in ~1.5TB of disk space utilized.
+
 ## Installation
 
 The first step is to download this repository to your local environment.
@@ -128,17 +130,17 @@ Now that databases are installed, samples have been located, a mapping file has 
 
 1. **SLURM resource requests.**
 
-The header contains SLURM resource requests for the entire pipeline. Change these requests as needed.
+The header contains SLURM resource requests for the entire pipeline. Change or remove these requests as needed/required.
 
 --time: How long, in hh:mm:ss, the pipeline should run.
 --mem: The amount of memory that will be allocated to the entire job. This can be entirely dependent on the data being analyzed. 192GB is sufficient for most datasets. Some datasets may be able to go as low as 100GB.
 --cpus-per-task: The number of CPUs to allocate. Computationally-intensive rules require a maximum of between 4-8 CPUs per task and sample, chosen to optimize the number of CPUs running at any given point in the pipeline.
---gres=lscratch: Optional. The HPC environment used for testing the pipeline requires scratch space requests. In testing, a 60GB dataset utilizes around 500GB of disk space at most during the life of the job. Running the same dataset in the ANADAMA workflow resulted in ~1.5TB of disk space utilized.
+--gres=lscratch: Optional. The HPC environment used for testing the pipeline requires scratch space requests.
 
 2. **Config file location.**
 
 In the script, you will see a line containing `export CONFIG_FILE="config.yaml"`. Provide the location or name of your config file.
 
-You likely will not need to change this, but if you have moved the config.yaml file OR you have not changed the name of the config.yaml (for instance, in the case where you want to run your samples as single-end in one job and paired-end in another job, creating two configs: `config_se.yaml` and `config_pe.yaml`).
+You likely will not need to change this, but if you have moved the config.yaml file OR you have changed the name of the config.yaml (for instance, in the case where you want to run your samples as single-end in one job and paired-end in another job, creating two configs: `config_se.yaml` and `config_pe.yaml`).
 
 ### Submit the SBATCH script!
