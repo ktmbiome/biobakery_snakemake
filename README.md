@@ -133,8 +133,11 @@ Now that databases are installed, samples have been located, a mapping file has 
 The header contains SLURM resource requests for the entire pipeline. Change or remove these requests as needed/required.
 
 --time: How long, in hh:mm:ss, the pipeline should run.
+
 --mem: The amount of memory that will be allocated to the entire job. This can be entirely dependent on the data being analyzed. 192GB is sufficient for most datasets. Some datasets may be able to go as low as 100GB.
+
 --cpus-per-task: The number of CPUs to allocate. Computationally-intensive rules require a maximum of between 4-8 CPUs per task and sample, chosen to optimize the number of CPUs running at any given point in the pipeline.
+
 --gres=lscratch: Optional. The HPC environment used for testing the pipeline requires scratch space requests.
 
 2. **Config file location.**
