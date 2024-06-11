@@ -1,7 +1,7 @@
 configfile: "config.yaml"
 include: "utils.smk"
 
-TMPDIR = "/lscratch/" + tmpdir + "/"
+TMPDIR = config["scratch_dir"] + tmpdir + "/"
 WORKDIR = wDIR
 KD_OUTPUTS=config["output_dir"] + "kneaddata/"
 MPHL_OUTPUTS=config["output_dir"] + "metaphlan/"
