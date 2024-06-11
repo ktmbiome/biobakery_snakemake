@@ -1,16 +1,16 @@
 scratch_dir: "/lscratch/"
 output_dir: "outputs/"
 
-install_dir: "/data/mccauleyke/biobakery_snakemake_conda/biobakery_snakemake/"
-map_file: "/data/mccauleyke/biobakery_snakemake_conda/cami_4samps_mapping.txt"
-input_dir: "/data/mccauleyke/biobakery_snakemake_conda/ss_reads/"
-databaseDIR: "/data/mccauleyke/biobakery_snakemake_conda/"
+install_dir: "/my/installation/directory/"
+map_file: "/my/installation/directory/mapping_file.txt"
+input_dir: "/my/reads/directory/"
+databaseDIR: "/directory/of/databases/"
 
 paired_end: "False" # Needs to be string, looking for "True"
 uniref_lev: "uniref90"
 uniref_grp: "level4ec" # can choose rxn, go, ko, level4ec, pfam, eggnog
 name: "ec"
-units: "cpm"
+units: "relab"
 
 strainphlan: False
 
