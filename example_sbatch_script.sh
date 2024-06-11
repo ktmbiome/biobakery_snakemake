@@ -4,8 +4,7 @@
 #SBATCH --cpus-per-task 48
 #SBATCH --gres=lscratch:800
 
-source myconda
-mamba activate biobakery_basic
+conda activate biobakery_snakemake
 
 export CONFIG_FILE="config.yaml"
 
