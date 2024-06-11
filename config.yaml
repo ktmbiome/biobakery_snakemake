@@ -1,0 +1,20 @@
+scratch_dir: "/lscratch/"
+output_dir: "outputs/"
+
+install_dir: "/data/mccauleyke/biobakery_snakemake_conda/biobakery_snakemake/"
+map_file: "/data/mccauleyke/biobakery_snakemake_conda/cami_4samps_mapping.txt"
+input_dir: "/data/mccauleyke/biobakery_snakemake_conda/ss_reads/"
+databaseDIR: "/data/mccauleyke/biobakery_snakemake_conda/"
+
+paired_end: "False" # Needs to be string, looking for "True"
+uniref_lev: "uniref90"
+uniref_grp: "level4ec" # can choose rxn, go, ko, level4ec, pfam, eggnog
+name: "ec"
+units: "cpm"
+
+strainphlan: False
+
+kd_db_loc: "kneaddata_db/"
+kd_index: "hg37dec_v0.1"
+mph_db_loc: "metaphlan_db/"
+mph_index: "mpa_vJun23_CHOCOPhlAnSGB_202307"

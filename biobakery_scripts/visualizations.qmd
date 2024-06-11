@@ -1,0 +1,373 @@
+---
+title: "Metagenome Report"
+format: 
+  html:
+    toc: true
+    fig-height: 7
+    fig-width: 8
+    code-fold: true
+    theme: flatly
+    embed-resources: true
+params:
+  scratch_dir: ""
+  output_dir: ""
+  install_dir: ""
+  map_file: ""
+  input_dir: ""
+  databaseDIR: ""
+  kneaddataDB: ""
+  extra_scripts: ""
+  paired_end: ""
+  uniref_lev: ""
+  uniref_grp: ""
+  name: ""
+  units: ""
+  strainphlan: ""
+  kd_db_loc: ""
+  kd_index: ""
+  mph_db_loc: ""
+  mph_index: ""
+---
+
+# Introduction
+
+The data was run through the standard workflow for whole metagenome shotgun sequencing `r ifelse(params$strainphlan, print("and StrainPhlAn for strain profiling"), print("with the exception of strain profiling (StrainPhlAn)"))`. Details of the pipelines can be found in the bioBakery Workflows Tutorial.
+
+```{r}
+#| message: false
+#| warnings: false
+
+library(kableExtra)
+library(ggplot2)
+library(heatmaply)
+library(plotly)
+library(ape)
+library(vegan)
+library(data.table)
+library(RColorBrewer)
+
+theme_set(theme_minimal())
+options(scipen=8)
+color_scheme <- c(brewer.pal(8, "Set1"), brewer.pal(7, "Dark2"))
+```
+
+
+```{r}
+kneaddata_table <- read.table("kneaddata/merged/kneaddata_read_count_table.tsv", header=T, check.names=F, sep="\t")
+nsamps <- nrow(kneaddata_table)
+end_type <- ifelse(sum(grepl("single", names(kneaddata_table))) > 0, "single-end", "paired-end")
+```
+
+# Quality Control
+
+This report section contains information about the quality control processing for all `r nsamps` `r end_type` fastq input files. These files were run through the KneadData QC pipeline. Reads were first trimmed then filtered against contaminate reference database `r params$kd_index`.
+
+`r ifelse(end_type %in% "paired-end", print("Data is organized by paired and orphan reads. When one read in a pair passes a filtering step and the other does not the surviving read is an orphan."), print("Single-end reads are trimmed and decontaminated prior to analysis."))` The tables and plots below are annotated as follows:
+
+- raw : Untouched fastq reads.
+
+- trimmed : Number of reads remaining after trimming bases with Phred score < 20. If the trimmed reads is < 50% of original length then it is removed altogether.
+
+- `r params$kd_index` : Number of reads after depleting against reference database `r params$kd_index`.
+
+## DNA Samples Quality Control
+
+### DNA Samples Tables of Filtered Reads
+
+```{r}
+kd_tab <- kneaddata_table[, grepl("^Sample|pair1$|single$", names(kneaddata_table)) & !grepl("final", names(kneaddata_table))]
+names(kd_tab)[!names(kd_tab) %in% "Sample"] <- gsub("\\s*\\w*$", "", names(kd_tab)[!names(kd_tab) %in% "Sample"])
+names(kd_tab) <- gsub("decontaminated ", "", names(kd_tab))
+
+kable(kd_tab, caption="Read Count Table")
+```
+
+```{r}
+if(sum(grepl("orphan", names(kneaddata_table))) > 0) {
+  kd_tab_orphan <- kneaddata_table[, grepl("^Sample|orphan", names(kneaddata_table)) & !grepl("final", names(kneaddata_table))]
+  names(kd_tab_orphan) <- gsub("decontaminated ", "", names(kd_tab_orphan))
+  kable(kd_tab_orphan, caption = "Orphan Count Table")
+}
+
+kd_decontam <- kneaddata_table %>%
+  mutate(decontam_sum = rowSums(select(., contains("final"))),
+         decontam_trim = decontam_sum / rowSums(select(., contains("trimmed"))),
+         decontam_raw = decontam_sum / rowSums(select(., contains("raw")))
+         ) %>%
+  select(Sample, decontam_trim, decontam_raw)
+
+names(kd_decontam) <- c("Sample","Trimmed","Raw")
+
+kable(kd_decontam, caption = "DNA Microbial Read Proportion")
+```
+
+### DNA Samples Plots of Filtered Reads
+
+```{r}
+## reshape is from the stats package --- could move to data.table 
+kneaddata_long <- reshape(kd_tab, direction = "long", idvar="Sample", 
+        times=names(kd_tab)[!names(kd_tab) %in% "Sample"], timevar = "data_type",
+        varying = list(names(kd_tab)[!names(kd_tab) %in% "Sample"]))
+
+kneaddata_long$data_type <- factor(kneaddata_long$data_type, levels = unique(kneaddata_long$data_type))
+
+ggplotly(
+  ggplot(kneaddata_long, aes(
+    x = Sample, fill = data_type, y = raw
+  )) + geom_bar(stat = "identity", position = "dodge") +
+    labs(y="Readcount") +
+    scale_fill_manual(values=color_scheme) +
+    ggtitle(ifelse(end_type %in% "paired-end", "DNA Paired end reads", "DNA Single end reads"))
+)
+```
+
+# Taxonomic Profiling of Metagenomic Reads
+
+This report section contains information about the taxonomy for all DNA samples. These samples were run through MetaPhlAn.
+
+```{r}
+aggregate_clades <- function(table, levelnum) {
+  levels <- strsplit(rownames(table), "[|]")
+  levels <- sapply(levels, function(x) paste0(x[levelnum], collapse="|"))
+  newtab <- aggregate(table, list(Groups=levels), FUN=sum)
+  rownames(newtab) <- newtab$Groups
+  newtab$Groups <- NULL
+  return(newtab)
+}
+
+clade_table <- read.table("metaphlan/merged/metaphlan_taxonomic_profiles.tsv", header=T, skip=1, sep="\t", comment="")
+clade_table <- clade_table[grepl("t__", clade_table$clade_name),]
+rownames(clade_table) <- clade_table$clade_name
+clade_table$clade_name <- NULL
+
+species_table <- aggregate_clades(clade_table, 7)
+genus_table <- aggregate_clades(clade_table, 6)
+
+clade_table_filt <- clade_table[rowSums(clade_table > 0.01) > 0.1*ncol(clade_table),]
+
+species_table_filt <- aggregate_clades(clade_table_filt, 7)
+genus_table_filt <- aggregate_clades(clade_table_filt, 6)
+```
+
+Taxonomic abundances are passed through a basic filter requiring each species or genus to have at least 0.01% abundance in at least 10% of all samples.
+
+A total of `r nrow(species_table)` species and `r nrow(genus_table)` genera were identified. After basic filtering `r nrow(species_table_filt)` species and `r nrow(genus_table_filt)` genera remained.
+
+## Taxonomic Count Table
+
+```{r}
+total_species <- colSums(species_table > 0)
+total_species_filt <- colSums(species_table_filt > 0)
+total_genera <- colSums(genus_table > 0)
+total_genera_filt <- colSums(genus_table_filt > 0)
+
+spec_tab <- data.frame(cbind(total_species, total_species_filt, total_genera, total_genera_filt))
+names(spec_tab)[names(spec_tab) %in% "total_species"] <- "Total Species"
+names(spec_tab)[names(spec_tab) %in% "total_species_filt"] <- "Total Species (Filtered)"
+names(spec_tab)[names(spec_tab) %in% "total_genera"] <- "Total Genera"
+names(spec_tab)[names(spec_tab) %in% "total_genera_filt"] <- "Total Genera (Filtered)"
+kable(spec_tab, caption = "Taxonomic Count Table")
+```
+
+## Ordination
+
+### Species
+
+```{r}
+top25_species <- species_table_filt[names(sort(rowMeans(species_table_filt), decreasing=T)[1:25]),]
+
+get_pcs <- pcoa(vegdist(t(top25_species), method="bray"))
+
+pcs <- data.frame(get_pcs$vectors)
+pcs$Sample <- rownames(pcs)
+
+ggplotly(ggplot(pcs, aes(x=Axis.1, y=Axis.2, fill=Sample)) + 
+           geom_point(size=3, shape=21) +
+           labs(x=paste0("PCoA 1 (", round(get_pcs$values$Relative_eig[1]*100),"%)"),
+                y=paste0("PCoA 2 (", round(get_pcs$values$Relative_eig[2]*100),"%)"),
+                title="PCoA Ordination of top 25 species using Bray-Curtis similarity")
+)
+```
+
+Principal coordinate analysis of variance among samples, based on Bray-Curtis dissimilarities between species profiles of samples. Numbers in parenthesis on each axis represent the amount of variance explained by that axis.
+
+### Genera
+
+```{r}
+top25_genus <- genus_table_filt[names(sort(rowMeans(genus_table_filt), decreasing=T)[1:25]),]
+
+get_pcs <- pcoa(vegdist(t(top25_genus), method="bray"))
+
+pcs <- data.frame(get_pcs$vectors)
+pcs$Sample <- rownames(pcs)
+
+ggplotly(ggplot(pcs, aes(x=Axis.1, y=Axis.2, fill=Sample)) + 
+           geom_point(size=3, shape=21) +
+           labs(x=paste0("PCoA 1 (", round(get_pcs$values$Relative_eig[1]*100),"%)"),
+                y=paste0("PCoA 2 (", round(get_pcs$values$Relative_eig[2]*100),"%)"),
+                title="PCoA Ordination of top 25 genera using Bray-Curtis similarity")
+)
+```
+
+Principal coordinate analysis of variance among samples, based on Bray-Curtis dissimilarities between genera profiles of samples. Numbers in parenthesis on each axis represent the amount of variance explained by that axis.
+
+## Heatmaps
+
+Hierarchical clustering of samples and species and genera, using top 25 species and genera with highest mean relative abundance among samples.
+
+### Species
+
+```{r}
+heatmaply(log10(top25_species+1))
+```
+
+### Genera
+
+```{r}
+heatmaply(log10(top25_genus+1))
+```
+
+## Barplot
+
+### Species
+
+```{r}
+species_table_filt$Groups <- rownames(species_table_filt)
+long_species_table <- melt.data.table(data.table(species_table_filt), id.vars = "Groups")
+weighted_values <- sort(with(long_species_table, tapply(value, Groups, mean)), decreasing=TRUE)
+long_species_table$Species <- factor(ifelse(long_species_table$Groups %in% names(weighted_values)[1:15], long_species_table$Groups, "Other"), levels = c(names(weighted_values)[1:15], "Other"))
+long_species_table <- aggregate(value ~ Species + variable, data=long_species_table, sum)
+
+color_list <- unique(colors()[!grepl("grey|gray|1|2|3|4|white", colors())])
+ggplotly(ggplot(long_species_table, aes(x=variable, y=value, fill=Species)) +
+           geom_bar(stat="identity", color="black") +
+           scale_fill_manual(values=c(sample(color_list, 15), "grey")))
+```
+
+Stacked barplot of 15 most abundant species among samples. Samples in the plot were sorted on the species with the highest mean abundances among samples, in decreasing order.
+
+### Genera
+
+```{r}
+genus_table_filt$Groups <- rownames(genus_table_filt)
+long_genus_table <- melt.data.table(data.table(genus_table_filt), id.vars = "Groups")
+weighted_values <- sort(with(long_genus_table, tapply(value, Groups, mean)), decreasing=TRUE)
+long_genus_table$Genera <- factor(ifelse(long_genus_table$Groups %in% names(weighted_values)[1:15], long_genus_table$Groups, "Other"),
+                                     levels = c(names(weighted_values)[1:15], "Other"))
+long_genus_table <- aggregate(value ~ Genera + variable, data= long_genus_table, sum)
+
+ggplotly(ggplot(long_genus_table, aes(x=variable, y=value, fill=Genera)) +
+           geom_bar(stat="identity", color="black") + 
+           scale_fill_manual(values=c(sample(color_list, 15), "grey")))
+```
+
+Stacked barplot of 15 most abundant genera among samples. Samples in the plot were sorted on the genera with the highest mean abundances among samples, in decreasing order.
+
+# Functional Profiling of Metagenomic Reads
+
+This report section contains preliminary exploratory figures that summarize HUMAnN functional profiling of all samples. HUMAnN performs species-specific and species-agnostic quantification of gene families, `r ifelse(params$name %in% "ec", "EC enzyme modules", "KEGG Orthologies")`, and pathways, using the UniRef and MetaCyc databases.
+
+## Pathway and ECs Abundance
+
+```{r}
+path <- read.table("humann/merged/pathabundance.tsv", sep="\t", comment="", header=T, check.names=F, row.names=1, quote="")
+path_filt <- path[!grepl("[|]", rownames(path)) & !rownames(path) %in% c("UNINTEGRATED","UNMAPPED"),]
+path_filt <- path_filt[names(sort(rowMeans(path_filt), decreasing=T))[1:50], ]
+names(path_filt) <- gsub("_Abundance.*", "", names(path_filt))
+path_filt$path <- rownames(path_filt)
+path_filt$short_path <- unlist(lapply(strsplit(path_filt$path, ": "), function(x) x[1]))
+rownames(path_filt) <- path_filt$short_path
+path_num <- path_filt[, names(path_filt)[unlist(lapply(path_filt, is.numeric))]]
+
+print(paste0("humann/merged/", params$name, "s_relab.tsv"))
+ecs <- read.table(paste0("humann/merged/", params$name, "s_relab.tsv"), sep="\t", comment="", header=T, check.names=F, row.names=1, quote="")
+ecs_filt <- ecs[!grepl("[|]", rownames(ecs)) & !rownames(ecs) %in% c("UNMAPPED", "UNGROUPED"),]
+ecs_filt <- ecs_filt[names(sort(rowMeans(ecs_filt), decreasing=T))[1:50], ]
+names(ecs_filt) <- gsub("_Abundance.*", "", names(ecs_filt))
+ecs_filt$path <- rownames(ecs_filt)
+ecs_filt$path <- NULL
+
+heatmaply(log10(path_num+1))
+heatmaply(log10(ecs_filt+1))
+```
+
+Abundances were log10 transformed prior to clustering. The color bar represents relative abundances on a log10 scale.
+
+```{r}
+heatmaply(path_num, scale="row")
+heatmaply(ecs_filt, scale="row")
+```
+
+Abundances were z-score transformed prior to clustering. The color bar represents relative abundances on a z-score scale.
+
+```{r}
+path_list <- data.frame(Pathways=path_filt$path,
+                        Average=apply(path_num, 1, mean),
+                        Variance=apply(path_num, 1, var))
+rownames(path_list) <- NULL
+scroll_box(kable_styling(kable(path_list[order(path_list$Average, decreasing = T),])), width="100%",height="6in")
+```
+
+## Features
+
+```{r}
+colors <- c("blue","orange")
+color_df <- data.frame(colors, labels=c("Nucleotide search", "Nucleotide + translated search"))
+```
+
+Feature detection as a function of sequencing depth. Effect of sample sequencing depth on the ability to detect microbiome functional features in metagenomic sequence data. HUMAnN functional profiling of DNA quality filtered reads was performed on individual samples in species-specific mode (`r color_df$colors[1]`), i.e. nucleotide alignment against pangenomes of species identified in the sample with MetaPhlAn, and in combined species-specific and -agnostic (`r color_df$colors[2]`) mode, in which reads not matching any pangenome reference sequences were subjected to translated searching against the `r params$uniref_lev` database. Each profiled sample is represented by a `r color_df$colors[2]` and `r color_df$colors[1]` point in each plot. Linear regression fit is represented by straight lines in each plot.
+
+```{r}
+#| fig-height: 6
+#| fig-width: 6
+feats <- read.table("humann/merged/humann_read_and_species_count_table.tsv", sep="\t", comment="", header=T, check.names=F, row.names=1, quote="")
+feat_counts <- read.table("humann/counts/humann_feature_counts.tsv", sep="\t", comment="", header=T, check.names=F, row.names=1, quote="")
+
+merged_feats <- merge(feats, feat_counts, by=0)
+merged_feats$Sample <- merged_feats$Row.names
+merged_feats$Row.names <- NULL
+
+alignment_ggplotly <- function(data, y, labs) {
+  ggplotly(
+  ggplot(data) +
+    geom_point(aes(y=log10(!!enquo(y)), x=log10(`total nucleotide aligned`), color=color_df$labels[1], text=paste0("Sample: ", Sample,
+                                      "<br>", labs$y, ": ", round(log10(!!enquo(y)),3),
+                                      "<br>log10(Aligned reads):", round(log10(`total nucleotide aligned`),3),
+                                      "<br>", color_df$labels[1]))) +
+    geom_smooth(method="lm", formula = "y ~ x", aes(y=log10(!!enquo(y)), x=log10(`total nucleotide aligned`), color=color_df$labels[1]), se=FALSE) +
+    geom_point(aes(y=log10(!!enquo(y)), x=log10(`total translated aligned`), color=color_df$labels[2], text=paste0("Sample: ", Sample,
+                                      "<br>", labs$y, ": ", round(log10(!!enquo(y)),3),
+                                      "<br>log10(Aligned reads): ", round(log10(`total translated aligned`),3),
+                                      "<br>", color_df$labels[2]))) +
+    geom_smooth(method="lm", formula = "y ~ x", aes(y=log10(!!enquo(y)), x=log10(`total translated aligned`), color=color_df$labels[2]), se=FALSE) +
+    scale_color_manual("", values = color_df$colors, breaks=color_df$labels) + 
+    labs(y=labs$y, x="log10(Aligned reads)", title=labs$title),
+  tooltip="text"
+)
+}
+
+suppressWarnings(alignment_ggplotly(merged_feats, y = `total reads`, labs = list(y="log10(Input reads)", title="Read alignment rate")))
+suppressWarnings(alignment_ggplotly(merged_feats, y = `genefamilies_counts`, labs = list(y="log10(gene families)", title=paste(params$uniref_lev, "gene families"))))
+suppressWarnings(alignment_ggplotly(merged_feats, y = `ecs_counts`, labs = list(y="log10(ECs)", title="Enzymes (ECs)")))
+suppressWarnings(alignment_ggplotly(merged_feats, y = `pathabundance_counts`, labs = list(y="log10(Pathways)", title="Pathways")))
+```
+
+
+# Data Processing Workflow Information
+
+## Software Versions
+
+```{r}
+print(system("kneaddata --version", intern=TRUE))
+print(system("metaphlan --version", intern=TRUE))
+print(system("humann --version", intern=TRUE))
+```
+
+## Tasks Run
+
+## System Info
+
+```{r}
+sessionInfo()
+```
+

@@ -1,0 +1,16 @@
+name: biobakery_minimal
+channels:
+  - biobakery
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.9
+  - kneaddata=0.12.0
+  - metaphlan=4.1.0
+  - humann=3.9
+  - snakemake
+  - quarto
+  - r-kableextra
+  - r-heatmaply
+  - r-plotly
