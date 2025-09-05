@@ -57,6 +57,7 @@ metaphlan --install --index mpa_vJun23_CHOCOPhlAnSGB_202307 --bowtie2db metaphla
 
 humann_databases --download chocophlan full humann_db
 humann_databases --download uniref uniref90_diamond humann_db
+humann_databases --download uniref uniref50_diamond humann_db
 humann_databases --download utility_mapping full humann_db
 ```
 
@@ -115,7 +116,7 @@ Below provides a description of each of the variables:
 - `databaseDIR`: Location of databases
 - `paired_end`: Whether the pipeline is intended to run as single-end or paired-end. Choose `False` for single-end and `True` for paired-end.
 - `uniref_lev`: Choose "uniref90" or "uniref50"
-- `uniref_grp`: How HUMAnN groups uniref values; Choose "rxn", "go", "ko", "level4ec", "pfam", "eggnog"
+- `uniref_grp`: How HUMAnN groups uniref values; Choose "go", "ko", "level4ec", "pfam", "eggnog"
 - `name`: Linker to provide names for the new groups; Options are: "go", "ko", "ec", "pfam", "eggnog", matching `uniref_grp` order.
 - `units`: Choose "relab" or "cpm"
 - `strainphlan`: Whether to attempt StrainPhlAn
