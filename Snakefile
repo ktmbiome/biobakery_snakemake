@@ -17,15 +17,19 @@ pipeline_output = [
     TMPDIR + KD_OUTPUTS + MERGED + "kneaddata_read_count_table.tsv",
     TMPDIR + MPHL_OUTPUTS + MERGED + "metaphlan_taxonomic_profiles.tsv",
     expand(TMPDIR + HMN_OUTPUTS + MAIN + "{sample}_pathabundance.tsv", sample=samples),
-    TMPDIR + HMN_OUTPUTS + MERGED + config["name"] + "s_relab.tsv",
-    TMPDIR + HMN_OUTPUTS + MERGED + config["name"] + "_renamed.tsv",
+    TMPDIR + HMN_OUTPUTS + MERGED + config["name"] + "s_" + config["units"] + ".tsv",
+    TMPDIR + HMN_OUTPUTS + MERGED + config["name"] + "s_" + config["units"] + "_renamed.tsv",
     TMPDIR + MPHL_OUTPUTS + BIOMS + "metaphlan_taxonomic_profiles.biom",
     TMPDIR + HMN_OUTPUTS + BIOMS + "humann_pathabundance_" + config["units"] + ".biom",
     TMPDIR + HMN_OUTPUTS + BIOMS + "humann_" + config["name"] + "_" + config["units"] + ".biom",
     TMPDIR + HMN_OUTPUTS + MERGED + "humann_read_and_species_count_table.tsv",
-    TMPDIR + HMN_OUTPUTS + COUNTS + "humann_feature_counts.tsv",
-    TMPDIR + config["output_dir"] + "visualizations.html"
+    TMPDIR + HMN_OUTPUTS + COUNTS + "humann_feature_counts.tsv"
 ]
+
+if len(samples) > 2:
+    pipeline_output.extend([
+        TMPDIR + config["output_dir"] + "visualizations.html"
+    ])
 
 if config["strainphlan"]:
     pipeline_output.extend([
@@ -35,14 +39,6 @@ if config["strainphlan"]:
 rule all:
     input:
         pipeline_output
-    params:
-        res_dir=TMPDIR + config["output_dir"],
-        out_dir=WORKDIR
-    shell:
-        """
-        # Upon completion of all pipeline output, move files to the working directory
-        mv {params.res_dir} {params.out_dir}
-        """
 
 rule kneaddata:
     input:
@@ -56,9 +52,9 @@ rule kneaddata:
         logdir=TMPDIR + KD_OUTPUTS + MAIN + "logs/",
         log=TMPDIR + KD_OUTPUTS + MAIN + "logs/{sample}.log",
         paired=config["paired_end"]
-    threads: 4
+    threads: 8
     resources:
-        mem_mb=25000
+        mem_mb=30000
     shell:
         """
         cmd="kneaddata "
@@ -111,7 +107,7 @@ rule humann:
         outdir = TMPDIR + HMN_OUTPUTS + MAIN,
         db=config["databaseDIR"] + "humann_db/",
         index=config["mph_index"]
-    threads: 12
+    threads: 16
     shell:
         """              
         humann -i {input.reads} -o {params.outdir} \
@@ -125,11 +121,11 @@ rule strainphlan_markers:
     input:
         rules.metaphlan.output.sams
     output:
-        temp(TMPDIR + STRN_OUTPUTS + "consensus_markers/{sample}.json.bz2")
+        TMPDIR + STRN_OUTPUTS + "consensus_markers/{sample}.json.bz2"
     params:
         outdir= TMPDIR + STRN_OUTPUTS + "consensus_markers/",
         db=config["databaseDIR"] + config["mph_db_loc"] + "/" + config["mph_index"] + ".pkl",
-    threads: 28
+    threads: 8 # can perhaps be scaled down? no evidence of getting scaled down
     shell:
         """
         mkdir -p {params.outdir}
@@ -153,12 +149,12 @@ rule strainphlan_clades:
         strainphlan -s {input} -o {params.dir}/clade_names -n {threads} --print_clades_only -d {params.db}
         if [[ $(wc -l < {params.dir}/clade_names/print_clades_only.tsv) -ge 2 ]]; then
             sed 1d {params.dir}/clade_names/print_clades_only.tsv | cut -f1 | while read CLADE; do 
-                echo "Running clade" {{$CLADE}}
-                mkdir -p clade_{{$CLADE}}
-                strainphlan -s consensus_markers/*.json.bz2 -o {params.dir}/clade_{{$CLADE}}/ -n {threads} -c {{$CLADE}} -d {params.db}
+                echo "Running clade $CLADE"
+                mkdir -p {params.dir}/$CLADE
+                strainphlan -s {params.dir}/consensus_markers/*.json.bz2 -o {params.dir}/$CLADE -n {threads} -c $CLADE -d {params.db}
             done
         else
-            echo "No eligible clades were identifed (present at 80% coverage in at least 4 samples). StrainPhlAn will not run."
+            echo "No eligible clades were identifed (clades must be present at 80% coverage in at least 4 samples). StrainPhlAn will not run."
         fi
         """
 
@@ -216,7 +212,7 @@ rule humann_regroup:
     input:
         rules.humann_join_relev.output.relev_genefam,
     output:
-        TMPDIR + HMN_OUTPUTS + MERGED + config["name"] + "s_relab.tsv"
+        TMPDIR + HMN_OUTPUTS + MERGED + config["name"] + "s_" + config["units"] + ".tsv"
     params:
         group=expand("{levs}_{grps}", levs=config["uniref_lev"], grps=config["uniref_grp"]),
         file=config["databaseDIR"] + "humann_db/utility_mapping/map_" + config["uniref_grp"] + "_" + config["uniref_lev"] + ".txt.gz"
@@ -228,9 +224,9 @@ rule humann_regroup:
 
 rule humann_rename:
     input:
-        TMPDIR + HMN_OUTPUTS + MERGED + config["name"] + "s_relab.tsv"
+        TMPDIR + HMN_OUTPUTS + MERGED + config["name"] + "s_" + config["units"] + ".tsv"
     output:
-        TMPDIR + HMN_OUTPUTS + MERGED + config["name"] + "_renamed.tsv"
+        TMPDIR + HMN_OUTPUTS + MERGED + config["name"] + "s_" + config["units"] + "_renamed.tsv"
     params:
         name=config["name"],
         file=config["databaseDIR"] + "humann_db/utility_mapping/map_" + config["name"] + "_name.txt.gz"

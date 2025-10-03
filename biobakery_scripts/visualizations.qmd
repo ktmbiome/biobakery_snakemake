@@ -6,7 +6,7 @@ format:
     fig-height: 7
     fig-width: 8
     code-fold: true
-    theme: flatly
+    theme: lumen
     embed-resources: true
 params:
   scratch_dir: ""
@@ -31,7 +31,11 @@ params:
 
 # Introduction
 
-The data was run through the standard workflow for whole metagenome shotgun sequencing `r ifelse(params$strainphlan, print("and StrainPhlAn for strain profiling"), print("with the exception of strain profiling (StrainPhlAn)"))`. Details of the pipelines can be found in the bioBakery Workflows Tutorial.
+The data was run through the standard workflow for whole metagenome shotgun
+sequencing `r ifelse(params$strainphlan, "and StrainPhlAn for strain profiling", "with the exception of strain profiling (StrainPhlAn)")`.
+Details of the pipelines can be found in the Nephele Pipeline Details page.
+
+This report was built in R and Quarto by the Nephele team, heavily inspired by the visualizations report from the BioBakery workflows.
 
 ```{r}
 #| message: false
@@ -60,9 +64,12 @@ end_type <- ifelse(sum(grepl("single", names(kneaddata_table))) > 0, "single-end
 
 # Quality Control
 
-This report section contains information about the quality control processing for all `r nsamps` `r end_type` fastq input files. These files were run through the KneadData QC pipeline. Reads were first trimmed then filtered against contaminate reference database `r params$kd_index`.
+This report section contains information about the quality control processing for all `r nsamps` `r end_type` fastq input files.
+These files were run through the KneadData QC pipeline. Reads were first trimmed then filtered against contaminate reference database `r params$kd_index`.
 
-`r ifelse(end_type %in% "paired-end", print("Data is organized by paired and orphan reads. When one read in a pair passes a filtering step and the other does not the surviving read is an orphan."), print("Single-end reads are trimmed and decontaminated prior to analysis."))` The tables and plots below are annotated as follows:
+`r ifelse(end_type %in% "paired-end",
+"Data is organized by paired and orphan reads. When one read in a pair passes a filtering step and the other does not the surviving read is an orphan.",
+"Single-end reads are trimmed and decontaminated prior to analysis.")`. The tables and plots below are annotated as follows:
 
 - raw : Untouched fastq reads.
 
@@ -139,6 +146,14 @@ clade_table <- read.table("metaphlan/merged/metaphlan_taxonomic_profiles.tsv", h
 clade_table <- clade_table[grepl("t__", clade_table$clade_name),]
 rownames(clade_table) <- clade_table$clade_name
 clade_table$clade_name <- NULL
+
+if(nrow(clade_table) <= 5) {
+  stop(paste0("Insufficient taxa identified to perform analysis. It is possible you have submitted a single-species community, or marker genes could not be identified.
+        You can download the results archive to explore what has been generated so far.
+        Explore metaphlan/merged/metaphlan_taxonomic_profiles.tsv and feel free to reach out to the Nephele team if you have questions."))
+}
+
+
 
 species_table <- aggregate_clades(clade_table, 7)
 genus_table <- aggregate_clades(clade_table, 6)
@@ -265,9 +280,30 @@ Stacked barplot of 15 most abundant genera among samples. Samples in the plot we
 
 # Functional Profiling of Metagenomic Reads
 
-This report section contains preliminary exploratory figures that summarize HUMAnN functional profiling of all samples. HUMAnN performs species-specific and species-agnostic quantification of gene families, `r ifelse(params$name %in% "ec", "EC enzyme modules", "KEGG Orthologies")`, and pathways, using the UniRef and MetaCyc databases.
+```{r}
+if (params$name %in% "ec") {
+    variable <- "ecs_counts"
+    label <- "Enzymes (ECs)"
+} else if (params$name %in% "ko") {
+    variable <- "kos_counts"
+    label <- "KEGG Orthologies (KOs)"
+} else if (params$name %in% "go") {
+    variable <- "gos_counts"
+    label <- "Gene Ontologies (GOs)"
+} else if (params$name %in% "pfam") {
+    variable <- "pfams_counts"
+    label <- "Pfams"
+} else if (params$name %in% "eggnog") {
+    variable <- "eggnogs_counts"
+    label <- "EggNOGs"
+}
+```
 
-## Pathway and ECs Abundance
+This report section contains preliminary exploratory figures that summarize HUMAnN functional profiling of all samples.
+HUMAnN performs species-specific and species-agnostic quantification of gene families,
+`r label`, and pathways.
+
+## Pathways and `r label`
 
 ```{r}
 path <- read.table("humann/merged/pathabundance.tsv", sep="\t", comment="", header=T, check.names=F, row.names=1, quote="")
@@ -279,13 +315,19 @@ path_filt$short_path <- unlist(lapply(strsplit(path_filt$path, ": "), function(x
 rownames(path_filt) <- path_filt$short_path
 path_num <- path_filt[, names(path_filt)[unlist(lapply(path_filt, is.numeric))]]
 
-print(paste0("humann/merged/", params$name, "s_relab.tsv"))
-ecs <- read.table(paste0("humann/merged/", params$name, "s_relab.tsv"), sep="\t", comment="", header=T, check.names=F, row.names=1, quote="")
+ecs <- read.table(paste0("humann/merged/", params$name, "s_", params$units, ".tsv"), sep="\t", comment="", header=T, check.names=F, row.names=1, quote="")
 ecs_filt <- ecs[!grepl("[|]", rownames(ecs)) & !rownames(ecs) %in% c("UNMAPPED", "UNGROUPED"),]
 ecs_filt <- ecs_filt[names(sort(rowMeans(ecs_filt), decreasing=T))[1:50], ]
 names(ecs_filt) <- gsub("_Abundance.*", "", names(ecs_filt))
 ecs_filt$path <- rownames(ecs_filt)
 ecs_filt$path <- NULL
+
+if(nrow(ecs_filt) <= 5) {
+  stop(paste0("Insufficient ", params$name, "s to perform analysis. We suggest choosing a different UniRef group for your samples.
+        You can download the results archive to explore what has been generated so far.
+        Explore ", paste0("humann/merged/", params$name, "s_", params$units, ".tsv"),
+        " and feel free to reach out to the Nephele team if you have questions."))
+}
 
 heatmaply(log10(path_num+1))
 heatmaply(log10(ecs_filt+1))
@@ -348,7 +390,7 @@ alignment_ggplotly <- function(data, y, labs) {
 
 suppressWarnings(alignment_ggplotly(merged_feats, y = `total reads`, labs = list(y="log10(Input reads)", title="Read alignment rate")))
 suppressWarnings(alignment_ggplotly(merged_feats, y = `genefamilies_counts`, labs = list(y="log10(gene families)", title=paste(params$uniref_lev, "gene families"))))
-suppressWarnings(alignment_ggplotly(merged_feats, y = `ecs_counts`, labs = list(y="log10(ECs)", title="Enzymes (ECs)")))
+suppressWarnings(alignment_ggplotly(merged_feats, y = get(variable), labs = list(y=paste0("log10(", variable,")"), title=label)))
 suppressWarnings(alignment_ggplotly(merged_feats, y = `pathabundance_counts`, labs = list(y="log10(Pathways)", title="Pathways")))
 ```
 

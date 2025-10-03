@@ -6,13 +6,13 @@ map_file: "/my/installation/directory/mapping_file.txt"
 input_dir: "/my/reads/directory/"
 databaseDIR: "/directory/of/databases/"
 
-paired_end: "False" # Needs to be string, looking for "True"
+paired_end: "True" # Needs to be string, looking for "True"
 uniref_lev: "uniref90"
 uniref_grp: "level4ec" # can choose rxn, go, ko, level4ec, pfam, eggnog
 name: "ec"
 units: "relab"
 
-strainphlan: False
+strainphlan: True
 
 kd_db_loc: "kneaddata_db/"
 kd_index: "hg37dec_v0.1"
